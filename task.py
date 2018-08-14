@@ -1,6 +1,5 @@
 import numpy as np
 from physics_sim import PhysicsSim
-
 class Task():
     """Task (environment) that defines the goal and provides feedback to the agent."""
     def __init__(self, init_pose=None, init_velocities=None, 
@@ -26,17 +25,25 @@ class Task():
         # Goal
         self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10.]) 
 
-    def get_reward(self):
-        """Uses current pose of sim to return reward."""
-        reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum()
+    def get_reward(self) -> float:
+        """Uses current pose of sim to return reward. Provides a reward in [-1, 1]."""
+
+        # Penalize plane angles; penalty increases with tilt
+        penalty = np.prod(1. - abs(np.sin(self.sim.pose[3:])))
+
+        # Use z-distance
+        delta = abs(self.sim.pose[2] - self.target_pos[2])
+        r = delta / self.target_pos[2] #np.sqrt(delta)
+        decay = np.exp(-1/r) if r>0.01 else 0 # Squash to [0, exp)
+        reward = (1. - decay)*penalty # Apply penalty
         return reward
 
-    def step(self, rotor_speeds):
+    def step(self, action):
         """Uses action to obtain next state, reward, done."""
         reward = 0
         pose_all = []
         for _ in range(self.action_repeat):
-            done = self.sim.next_timestep(rotor_speeds) # update the sim pose and velocities
+            done = self.sim.next_timestep(action) # update the sim pose and velocities
             reward += self.get_reward() 
             pose_all.append(self.sim.pose)
         next_state = np.concatenate(pose_all)
